@@ -1,0 +1,340 @@
+
+"""
+streamMX_hash_s12.py
+Semana 12 · Tablas Hash: Conceptos y Uso
+Equipo: [3]
+Integrantes: [Oscar Javier Carrillo Isiordia]
+Fecha: [Mayo 26]
+
+# COMPRENDE-1: ¿Qué hace una función hash? 
+    [Toma un dato de entrada como una palabra o un objeto y lo procesa matemáticamente para convertirlo en un índice numérico de tamaño fijo]
+
+# COMPRENDE-2: ¿Qué es el factor de carga y por qué importa?  
+    [Es la proporción que mide qué tan llena está una tabla hash, importa porque mide la eficiencia, previene colisiones y equilibra recursos ]
+
+# COMPRENDE-3: ¿En qué caso el dict de Python deja de ser suficiente?  
+    [Deja de ser suficiente cuando se enfrentan problemas de escala masiva, restricciones severas de memoria o necesidades de ordenamiento complejo]
+
+# IA-REFLEXION-C:
+     [Descubrimos que las colisiones no son un error de código, sino una certeza matemática inevitable]
+"""
+
+import time
+import bisect
+
+# ─────────────────────────────────────────────────────────────────────
+# DATOS DEL CATÁLOGO STREAMMX
+# Formato: "ID" → (titulo, puntaje_float, genero)
+# ─────────────────────────────────────────────────────────────────────
+catalogo_base = {
+    "MX-001": ("Interestelar",           8.2, "Sci-Fi"),
+    "MX-002": ("El Laberinto del Fauno", 7.5, "Fantasía"),
+    "MX-003": ("Origen",                 9.1, "Sci-Fi"),
+    "MX-004": ("Dune Parte 1",           6.8, "Sci-Fi"),
+    "MX-005": ("Oppenheimer",            8.7, "Drama"),
+    "MX-006": ("La Señal",               7.5, "Thriller"),
+    "MX-007": ("Everything Everywhere",  9.4, "Comedia"),
+    "MX-008": ("Los Elegidos",           6.2, "Drama"),
+    "MX-009": ("The Batman",             8.0, "Acción"),
+    "MX-010": ("Gravedad",               7.5, "Sci-Fi"),
+    "MX-011": ("Parasite",               9.0, "Thriller"),
+    "MX-012": ("Midsommar",              7.1, "Terror"),
+}
+
+# ─────────────────────────────────────────────────────────────────────
+# PATRÓN 1 · LOOKUP DIRECTO — Catálogo dinámico (R1)
+# Resuelve el Dilema Final de S11: inserción O(1) sin re-ordenar
+# ─────────────────────────────────────────────────────────────────────
+
+def buscar_pelicula(catalogo: dict, id_pelicula: str):
+    """
+    Retorna la tupla (titulo, puntaje, genero) si el ID existe.
+    Retorna None sin lanzar KeyError si no existe.
+
+    # DECISIÓN: ¿Por qué usar .get() en lugar de d[k] aquí?
+    """
+    return catalogo.get(id_pelicula)
+    pass
+
+
+def agregar_pelicula(catalogo: dict, id_pelicula: str, datos: tuple) -> None:
+    """
+    Agrega o actualiza una película en el catálogo.
+    Si el ID ya existe, actualiza los datos (no duplica).
+
+    # DECISIÓN: ¿Por qué la inserción en un dict es O(1) pero en una lista ordenada era O(n)?
+    """
+    catalogo[id_pelicula] = datos
+    pass
+
+
+# ─────────────────────────────────────────────────────────────────────
+# PATRÓN 2 · CONTEO DE FRECUENCIAS — Estadísticas por género (R2)
+# ─────────────────────────────────────────────────────────────────────
+
+def contar_por_genero(catalogo: dict) -> dict:
+    """
+    Retorna un dict {genero: cantidad_de_peliculas}.
+    Ejemplo: {"Sci-Fi": 4, "Drama": 2, "Thriller": 2, ...}
+
+    # DECISIÓN: ¿Por qué usar .get(genero, 0) + 1 en lugar de verificar con 'in' primero?
+    """
+    conteos = {}
+    for id_pelicula, datos in catalogo.items():
+        titulo, puntaje, genero = datos
+        titulo, puntaje, genero = datos
+        conteos[genero] = conteos.get(genero, 0) + 1.
+        pass
+    return conteos
+
+
+# ─────────────────────────────────────────────────────────────────────
+# PATRÓN 3 · AGRUPAMIENTO / BUCKET — Películas por rango de puntaje (R3)
+# ─────────────────────────────────────────────────────────────────────
+
+def agrupar_por_rango(catalogo: dict) -> dict:
+    """
+    Agrupa películas en tres rangos de puntaje:
+      "popular"   → puntaje en [7.0, 8.0)
+      "destacado" → puntaje en [8.0, 9.0)   (nota: ≥8.0 y < 9.0 pertenece aquí)
+      "premium"   → puntaje en [9.0, 10.0]
+
+    Retorna: {"popular": [...], "destacado": [...], "premium": [...]}
+    Cada lista contiene tuplas (id, titulo, puntaje).
+
+    # DECISIÓN: ¿Por qué usar setdefault() o inicializar el dict antes del loop?
+        [Porque asegurar la existencia previa de los contenedores (listas vacías) evita tener que validar y recrear los buckets repetidamente en cada iteración del bucle principal, ahorrando recursos de procesamiento.]
+    """
+    grupos = {"popular": [], "destacado": [], "premium": []}
+    for id_pelicula, datos in catalogo.items():
+        titulo, puntaje, genero = datos
+        elemento = (id_pelicula, titulo, puntaje)
+        if 7.0 <= puntaje < 8.0:
+            grupos["popular"].append(elemento)
+        elif 8.0 <= puntaje < 9.0:
+            grupos["destacado"].append(elemento)
+        elif 9.0 <= puntaje <= 10.0:
+            grupos["premium"].append(elemento)
+        pass
+    return grupos
+
+
+def peliculas_en_rango(grupos: dict, rango: str) -> list:
+    """
+    Retorna la lista de películas en el rango dado.
+    Retorna lista vacía si el rango no existe (sin KeyError).
+
+    # DECISIÓN: ¿qué método de dict usas para evitar KeyError aquí?
+        [Utilizamos el método seguro .get() pasando una lista vacía [] como argumento por defecto por si el usuario busca un rango inexistente como 'epico'.]
+    """
+    return grupos.get(rango, [])
+    pass
+
+
+# ─────────────────────────────────────────────────────────────────────
+# PATRÓN 4A · DEDUPLICACIÓN — Detectar títulos duplicados (R4)
+# ─────────────────────────────────────────────────────────────────────
+
+def procesar_lote(catalogo: dict, lote: list) -> dict:
+    """
+    Recibe una lista de tuplas (id, titulo, puntaje, genero).
+    Inserta en el catálogo solo las que NO estén ya por título.
+    Retorna: {"nuevas": int, "duplicadas": int}
+
+    # DECISIÓN: ¿Qué estructura usas para rastrear títulos ya vistos en O(1)?
+    #           (Pista: el set de Python comparte la misma base que el dict)
+         [Utilizamos un Conjunto (set). Al igual que los diccionarios, los conjuntos implementan tablas hash internas, lo que nos permite verificar si un título ya fue procesado en un tiempo inmediato O(1).]
+    """
+    titulos_existentes = {datos[0] for datos in catalogo.values()}  # set de títulos
+    resultado = {"nuevas": 0, "duplicadas": 0}
+    for id_p, titulo, puntaje, genero in lote:
+        if titulo in titulos_existentes:
+            resultado["duplicadas"] += 1
+        else:
+            catalogo[id_p] = (titulo, puntaje, genero)
+            titulos_existentes.add(titulo)
+            resultado["nuevas"] += 1
+        pass
+    return resultado
+
+
+# ─────────────────────────────────────────────────────────────────────
+# PATRÓN 4B · CACHÉ / MEMOIZACIÓN — Recomendaciones por usuario (R5)
+# ─────────────────────────────────────────────────────────────────────
+
+_cache_recomendaciones = {}   # dict global — persiste entre llamadas
+
+
+def _generar_recomendaciones(user_id: str, catalogo: dict) -> list:
+    """
+    Simula un motor costoso: tarda ~100ms por llamada.
+    NO modificar esta función.
+    """
+    time.sleep(0.1)  # simula latencia del motor
+    peliculas = list(catalogo.values())
+    peliculas.sort(key=lambda x: x[1], reverse=True)
+    return peliculas[:5]
+
+
+def obtener_recomendaciones(user_id: str, catalogo: dict) -> list:
+    """
+    Primera llamada: genera recomendaciones (tarda ~100ms) y las guarda en caché.
+    Llamadas siguientes: retorna desde caché en O(1) — sin llamar a _generar_recomendaciones.
+
+    # DECISIÓN: ¿por qué user_id es la clave ideal del caché en este caso?
+        [Porque el identificador de usuario es único, inmutable y corto; mapear directamente esta clave a su lista precargada garantiza que no mezclemos las recomendaciones de distintos clientes.]
+    """
+    if user_id in _cache_recomendaciones:
+        return _cache_recomendaciones[user_id]
+        
+    recomendaciones = _generar_recomendaciones(user_id, catalogo)
+    _cache_recomendaciones[user_id] = recomendaciones
+    return recomendaciones
+    pass
+
+
+# ─────────────────────────────────────────────────────────────────────
+# BENCHMARK — Pipeline S11 (lista + bisect) vs dict
+# ─────────────────────────────────────────────────────────────────────
+
+def benchmark_comparativo(n_valores: list = None):
+    """
+    Compara el tiempo de búsqueda entre:
+    - Pipeline S11: lista de IDs ordenados + bisect.bisect_left
+    - Dict S12: acceso directo por clave
+
+    # REFLEXIONA-1: ¿Qué explica la diferencia de tiempos observada?
+        [La diferencia se debe a la naturaleza de los accesos. 'bisect' requiere un tiempo O(log n) 
+         porque debe realizar saltos y comparaciones lógicas en la memoria del arreglo, mientras que el diccionario calcula de forma aritmética e inmediata la ubicación O(1).]
+
+    # REFLEXIONA-2: ¿Por qué el dict mantiene esa ventaja conforme n crece?
+         [Porque la función hash tarda exactamente el mismo tiempo en procesar un ID sin importar si la tabla contiene 10 registros o 10 millones.
+          No requiere recorrer ni comparar el dato con elementos vecinos.]
+
+    # REFLEXIONA-3: ¿En qué situación el pipeline S11 sería PREFERIBLE al dict?
+        [Sería preferible si el servidor cuenta con muy poca memoria RAM, ya que una lista ordenada consume mucho menos espacio físico que una tabla hash de diccionario,
+          o cuando requerimos hacer búsquedas por rangos aproximados ]
+    """
+    if n_valores is None:
+        n_valores = [10_000, 100_000, 1_000_000]
+
+    print(f"{'n':>12} | {'Lista+bisect (ms)':>20} | {'Dict (ms)':>15} | {'Speedup':>10}")
+    print("-" * 65)
+
+    for n in n_valores:
+        # Generar datos de prueba
+        claves = [f"ID-{i:07d}" for i in range(n)]
+        valor_dummy = ("Película", 8.0, "Drama")
+
+        # Pipeline S11: lista ordenada + bisect
+        lista_ordenada = sorted(claves)
+        t0 = time.perf_counter()
+        for _ in range(1000):
+            objetivo = f"ID-{n//2:07d}"
+            idx = bisect.bisect_left(lista_ordenada, objetivo)
+            _ = lista_ordenada[idx] if idx < len(lista_ordenada) else None
+        t_lista = (time.perf_counter() - t0) * 1000  # ms para 1000 búsquedas
+
+        # Dict S12: acceso directo
+        d = {k: valor_dummy for k in claves}
+        t0 = time.perf_counter()
+        for _ in range(1000):
+            _ = d.get(f"ID-{n//2:07d}")
+        t_dict = (time.perf_counter() - t0) * 1000
+
+        speedup = t_lista / t_dict if t_dict > 0 else float('inf')
+        print(f"{n:>12,} | {t_lista:>20.3f} | {t_dict:>15.3f} | {speedup:>10.1f}×")
+
+
+# ─────────────────────────────────────────────────────────────────────
+# BLOQUE PRINCIPAL — Casos de demostración y benchmark
+# ─────────────────────────────────────────────────────────────────────
+
+if __name__ == "__main__":
+    import copy
+    cat = copy.deepcopy(catalogo_base)
+
+    print("=" * 60)
+    print("PATRÓN 1 · Lookup Directo")
+    print("=" * 60)
+    print("MX-007:", buscar_pelicula(cat, "MX-007"))   # Debe imprimir tupla
+    print("MX-999:", buscar_pelicula(cat, "MX-999"))   # Debe imprimir None
+    agregar_pelicula(cat, "MX-013", ("Dune Parte 2", 8.5, "Sci-Fi"))
+    print("MX-013 (nueva):", buscar_pelicula(cat, "MX-013"))
+
+    print("\n" + "=" * 60)
+    print("PATRÓN 2 · Conteo por Género")
+    print("=" * 60)
+    conteos = contar_por_genero(catalogo_base)
+    print("Conteos:", conteos)
+    print("Sci-Fi:", conteos.get("Sci-Fi"), "→ esperado: 4")
+    print("Drama:", conteos.get("Drama"), "→ esperado: 2")
+
+    print("\n" + "=" * 60)
+    print("PATRÓN 3 · Agrupamiento por Rango")
+    print("=" * 60)
+    grupos = agrupar_por_rango(catalogo_base)
+    for rango, peliculas in grupos.items():
+        print(f"  {rango}: {len(peliculas)} películas")
+    print("Premium (9–10):", len(peliculas_en_rango(grupos, "premium")),
+          "→ esperado: 3")
+    print("Rango inexistente:", peliculas_en_rango(grupos, "epico"),
+          "→ esperado: []")
+
+    print("\n" + "=" * 60)
+    print("PATRÓN 4A · Deduplicación")
+    print("=" * 60)
+    lote_con_duplicados = [
+        ("MX-013", "Interestelar", 8.2, "Sci-Fi"),     # duplicado por título
+        ("MX-014", "Avatar: El Camino del Agua", 7.6, "Acción"),  # nueva
+        ("MX-015", "Parasite", 9.0, "Thriller"),        # duplicado por título
+        ("MX-016", "Tár", 7.8, "Drama"),               # nueva
+    ]
+    resultado = procesar_lote(copy.deepcopy(catalogo_base), lote_con_duplicados)
+    print("Resultado:", resultado, "→ esperado: {'nuevas': 2, 'duplicadas': 2}")
+
+    print("\n" + "=" * 60)
+    print("PATRÓN 4B · Caché de Recomendaciones")
+    print("=" * 60)
+    t0 = time.perf_counter()
+    r1 = obtener_recomendaciones("user_42", catalogo_base)
+    t1 = time.perf_counter() - t0
+    t0 = time.perf_counter()
+    r2 = obtener_recomendaciones("user_42", catalogo_base)
+    t2 = time.perf_counter() - t0
+    print(f"1er llamado: {t1*1000:.1f}ms")
+    print(f"2do llamado: {t2*1000:.1f}ms")
+    if t1 > 0 and t2 > 0:
+        print(f"Speedup caché: {t1/t2:.0f}× → esperado: ≥ 100×")
+
+    print("\n" + "=" * 60)
+    print("BENCHMARK — Pipeline S11 vs Dict S12")
+    print("=" * 60)
+    benchmark_comparativo()
+
+    # ─── Evidencia embebida al final del archivo ────────────────────
+    # # ESTRATEGIA: [El equipo describe en 2–3 oraciones su enfoque general
+    # #              para los cuatro patrones — qué decidieron y por qué]
+    # # VALIDA: [El equipo confirma qué casos de prueba pasaron y cuáles
+    # #          requirieron ajuste, con explicación del error encontrado]
+    # # IA-REFLEXION-A: 
+        # [Aprendimos a escribir código limpio y compacto en Python explotando métodos integrados como
+        # '.get()' con valores por defecto alternativos. 
+
+    # # IA-REFLEXION-R:
+        #  [El equipo reforzó la importancia del balance de recursos (intercambio espacio-tiempo):
+        #  los diccionarios compran velocidad instantánea usando más memoria física en el servidor, 
+        #  un costo justificado ante la inminente expansión internacional de la plataforma.]    
+
+    # # IA-REFLEXION-V: 
+        # [Confirmamos que las aserciones de tipos y el manejo genérico de colecciones evitan la mutabilidad accidental
+        #  de la base de datos central de StreamMX, permitiendo aislar el entorno de pruebas del catálogo en tiempo real.]
+
+    # # IA-REFLEXION-P: 
+        # [Para optimizar el agrupamiento de rangos de puntaje, observamos que 
+        # si los rangos fueran dinámicos o definidos por los administradores de contenido, 
+        # la estructura ideal sería un árbol de búsqueda auto-balanceable 
+        # para no perder consistencia logística en los límites de coma flotante.]    
+
+
+
